@@ -9,14 +9,17 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.sagant.distributednotification.domain.entity.Notification;
 import com.sagant.distributednotification.domain.model.NotificationChannel;
+import com.sagant.distributednotification.domain.model.NotificationCreatedEvent;
 import com.sagant.distributednotification.domain.model.NotificationPriority;
 import com.sagant.distributednotification.domain.model.NotificationRequest;
 import com.sagant.distributednotification.domain.model.NotificationResponse;
@@ -32,6 +35,9 @@ class NotificationServiceTest {
 
     @Mock
     private NotificationMapper notificationMapper;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private NotificationService notificationService;
@@ -65,6 +71,9 @@ class NotificationServiceTest {
         final NotificationResponse actualResponse = notificationService.createNotification(request);
 
         assertThat(actualResponse).isEqualTo(expectedResponse);
+        Mockito
+              .verify(eventPublisher)
+              .publishEvent(new NotificationCreatedEvent(savedEntity.getId(), "user@example.com", NotificationChannel.LOG, "body"));
     }
 
     @Test
@@ -84,10 +93,11 @@ class NotificationServiceTest {
 
         notificationService.createNotification(request);
 
-        final InOrder inOrder = Mockito.inOrder(notificationMapper, notificationRepository);
+        final InOrder inOrder = Mockito.inOrder(notificationMapper, notificationRepository, eventPublisher);
         inOrder.verify(notificationMapper).toEntity(request);
         inOrder.verify(notificationRepository).save(entityFromMapper);
+        inOrder.verify(eventPublisher).publishEvent(ArgumentMatchers.any(NotificationCreatedEvent.class));
         inOrder.verify(notificationMapper).toResponse(savedEntity);
-        verifyNoMoreInteractions(notificationMapper, notificationRepository);
+        verifyNoMoreInteractions(notificationMapper, notificationRepository, eventPublisher);
     }
 }
