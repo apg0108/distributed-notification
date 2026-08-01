@@ -15,11 +15,19 @@ services:
       timeout: 5s
       retries: 10
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   app:
     build: .
     depends_on:
       db:
         condition: service_healthy
+      mailhog:
+        condition: service_started
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -27,6 +35,9 @@ services:
       DB_USER: notifications
       DB_PASSWORD: notifications
       API_KEY: api-key-notifications
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      NOTIFICATION_EMAIL_FROM: notifications@sagant.local
     ports:
       - "8080:8080"
 
