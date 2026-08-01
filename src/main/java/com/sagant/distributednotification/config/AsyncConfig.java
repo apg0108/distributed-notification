@@ -10,12 +10,13 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import com.sagant.distributednotification.config.property.NotificationExecutorProperties;
+import com.sagant.distributednotification.config.property.NotificationRecoveryProperties;
 import com.sagant.distributednotification.config.property.NotificationRetryProperties;
 
 @Configuration
 @EnableAsync
 @EnableScheduling
-@EnableConfigurationProperties({ NotificationRetryProperties.class, NotificationExecutorProperties.class })
+@EnableConfigurationProperties({ NotificationRetryProperties.class, NotificationExecutorProperties.class, NotificationRecoveryProperties.class })
 public class AsyncConfig {
 
    @Bean(name = "notificationTaskExecutor")
