@@ -56,8 +56,7 @@ class NotificationServiceTest {
 
         final NotificationResponse expectedResponse = new NotificationResponse(
                 savedEntity.getId(), "user@example.com", NotificationChannel.LOG, "subject", "body",
-                NotificationPriority.HIGH, Map.of("k", "v"), NotificationStatus.PENDING, 0, null,
-                null, null, null);
+                NotificationPriority.HIGH, Map.of("k", "v"), NotificationStatus.PENDING);
 
         when(notificationMapper.toEntity(request)).thenReturn(entityFromMapper);
         when(notificationRepository.save(entityFromMapper)).thenReturn(savedEntity);
@@ -77,7 +76,7 @@ class NotificationServiceTest {
         savedEntity.setId(UUID.randomUUID());
         final NotificationResponse response = new NotificationResponse(
                 savedEntity.getId(), "user@example.com", NotificationChannel.EMAIL, null, "body",
-                NotificationPriority.MEDIUM, null, NotificationStatus.PENDING, 0, null, null, null, null);
+                NotificationPriority.MEDIUM, null, NotificationStatus.PENDING);
 
         when(notificationMapper.toEntity(request)).thenReturn(entityFromMapper);
         when(notificationRepository.save(entityFromMapper)).thenReturn(savedEntity);
