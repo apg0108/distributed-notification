@@ -65,3 +65,79 @@ así, sino que vendría de un secreto por-cliente gestionado externamente (ver l
 No se necesitan credenciales de base de datos para usar la API — la app se conecta a Postgres internamente. Si igual querés inspeccionar la base con
 un cliente externo, las credenciales son `notifications` / `notifications` contra
 `localhost:5434` (con el stack de Docker Compose levantado).
+
+## Decisiones de diseño
+
+**Procesamiento asíncrono sin broker.** La creación de una notificación (`POST /notifications`) persiste la fila con `status=PENDING` de forma
+síncrona y responde inmediatamente — esa fila en Postgres es la cola. El despacho real ocurre después, publicando un `NotificationCreatedEvent`
+que un `@TransactionalEventListener(phase = AFTER_COMMIT)` consume en un `ThreadPoolTaskExecutor`. Se descartó RabbitMQ/Kafka: un broker da
+durabilidad y escalado entre procesos que esta prueba no exige a esta escala, y agrega complejidad (contenedor propio, DLQs, consumer groups)
+para una ventana de 7 días. El trade-off real de este approach está anotado en
+"Trade-offs y limitaciones" — no cubre caídas del proceso a mitad del despacho.
+
+**Autenticación: API Key estática por header (`X-API-KEY`)**, validada por un `ApiKeyAuthFilter` (`OncePerRequestFilter`) con comparación en tiempo
+constante (`MessageDigest.isEqual`). Se descartó JWT/OAuth2/Basic Auth: el endpoint es un punto de integración service-to-service sin identidad de
+usuario, sesión, ni necesidad de expiración/refresh.
+
+**Canales de despacho con Strategy pattern: LOG + EMAIL, sin `SERVICE`.** `NotificationSender` es la interfaz de la estrategia;
+`LogNotificationSender`
+serializa la notificación a JSON y la loguea (con `logstash-logback-encoder` eso se muestra como una línea de log estructurada);
+`EmailNotificationSender`
+manda un correo real por SMTP (`JavaMailSender`) contra un Mailhog descartable en Docker Compose. Un `NotificationSenderResolver` arma en el
+constructor un `Map<NotificationChannel, NotificationSender>` a partir de **todos** los beans `NotificationSender` que Spring detecta — agregar un
+canal nuevo, sin tocar el listener que despacha.
+
+**Reintentos: scheduler propio de polling, `FailedNotificationRetryScheduler` corre cada `notification.retry.fixed-rate-ms` (30s por default), busca
+notificaciones `FAILED` con
+`retry_count < notification.retry.max-attempts` (1 por default), incrementa el contador y vuelve a invocar el mismo camino de despacho. Se prefirió
+esto sobre `@Retryable`/`@Recover` porque separa con claridad "el intento inicial" (parte del flujo de creación, corre en el executor async) de "la
+recuperación" (un proceso independiente y observable en el tiempo, con su propio intervalo configurable), sin necesitar que Spring AOP proxyee el
+método de envío. El costo: se pierde el backoff exponencial y las políticas de reintento más ricas que Spring Retry da out-of-the-box — con un solo
+reintento y sin backoff, no hace falta hoy, pero no escala bien si el máximo de intentos creciera.
+
+**Flyway en vez de `ddl-auto=update`.** Migraciones versionadas y revisables (`V1__create_notifications_table.sql`), y deja un schema determinístico.
+
+**Logging estructurado con correlación por MDC.** `logback-spring.xml` usa `LogstashEncoder` para que **toda** la aplicación loguee JSON, no solo el
+canal LOG. Al arrancar cada intento de despacho — tanto el disparo inicial en `NotificationProcessingListener` como cada reintento en
+`FailedNotificationRetryScheduler` — se hace `MDC.put("notificationId", id)` y se limpia en un `finally`. Esto permite reconstruir el ciclo de vida
+completo de una notificación puntual filtrando por ese campo en cualquier herramienta de logs.
+
+**Observabilidad con Actuator, sin métricas custom de Micrometer.** `/actuator/health`, `/actuator/info` y `/actuator/metrics` están expuestos. El
+trade-off de exponer esa información sin protección queda anotado abajo.
+
+## Trade-offs y limitaciones
+
+Funcionalidad dejada afuera conscientemente, o implementada de forma más simple de lo ideal, listada sin vueltas:
+
+- **El reintento es un scheduler de polling propio, no Spring Retry.** Intervalo fijo, sin backoff exponencial, un solo reintento por default.
+  Suficiente para el alcance de esta prueba, pero menos flexible que una política declarativa si el caso de uso creciera.
+- **`EmailNotificationSender` está testeado con `JavaMailSender` mockeado**, no contra GreenMail (SMTP embebido). La verificación de que el correo
+  realmente sale con el contenido correcto se hizo a mano contra Mailhog.
+- **Sin tabla de API keys en base de datos.** Una sola key estática por variable de entorno alcanza para esta prueba; no hay rotación, no hay keys
+  por-cliente, no hay expiración.
+- **Canal `SERVICE` (webhook HTTP saliente) fuera de alcance** — LOG + EMAIL ya cubren los escenarios de éxito y de fallo de integración externa que
+  se querían probar con la lógica de reintento.
+- **Actuator completamente público** (`health`, `info` y `metrics` sin API key). Expone información operativa real (memoria y threads de la JVM, pool
+  de conexiones de Hikari, nombres de la cadena de filtros de Spring Security) sin ninguna autenticación. Aceptable para esta prueba; en un despliegue
+  real, como mínimo se separaría el puerto de management o se exigiría autenticación para todo lo que no sea `health`.
+
+## Consideración sobre Jakarta EE
+
+- **Packaging**: el JAR autocontenido con Tomcat embebido pasaría a ser un WAR (`<packaging>war</packaging>`, `spring-boot-starter-tomcat` en
+  `provided`) extendiendo `SpringBootServletInitializer`, desplegado en un servidor como WildFly — la app deja de ser dueña del ciclo de vida de su
+  propio listener HTTP.
+- **Datasource**: en vez de que Spring Boot autoconfigure HikariCP desde `application.properties`, el datasource lo definiría y poolearía el servidor
+  de aplicaciones (config propia en `standalone.xml`), y la app lo buscaría por JNDI (`java:/jdbc/NotificationDS`) — el connection pooling, las
+  credenciales y el failover pasan a ser responsabilidad operativa del app server, no de la aplicación.
+- **Ejecución asíncrona**: `@Async` con `ThreadPoolTaskExecutor` (usado hoy en `AsyncConfig`/`NotificationProcessingListener`) crea threads no
+  gestionados por el contenedor, algo que la especificación EE Concurrency desaconseja explícitamente en un app server. Se reemplazaría por un
+  `ManagedExecutorService` inyectado con `@Resource` (threads trackeados, con propagación de contexto de seguridad/transacción), o, de forma más
+  idiomática a EE, empujando la notificación a una cola JMS consumida por un Message-Driven Bean — el equivalente EE genuino de lo que la fila en
+  Postgres aproxima en este ejercicio. Lo mismo aplica al `@Scheduled` de `FailedNotificationRetryScheduler`, que pasaría a ser un timer EE
+  (`@Schedule` de EJB) o un job disparado por el propio contenedor.
+- **Seguridad**: el `ApiKeyAuthFilter` (`OncePerRequestFilter`) + cadena de Spring Security se reemplazaría por Jakarta EE Security
+  (`jakarta.security.enterprise`) con un `HttpAuthenticationMechanism` custom validando la API key, respaldado por un `IdentityStore`, integrando la
+  autenticación con el realm de seguridad del app server en vez de con el `SecurityContextHolder` de Spring.
+- **Observabilidad**: los endpoints HTTP de Actuator perderían protagonismo; la consola de administración/CLI del app server y las MBeans JMX pasarían
+  a ser la superficie operativa principal, con métricas exportadas vía el subsistema de monitoreo propio del servidor o un puente JMX-a-Micrometer en
+  vez de `/actuator`.
