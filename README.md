@@ -80,8 +80,10 @@ un cliente externo, las credenciales son `notifications` / `notifications` contr
 síncrona y responde inmediatamente — esa fila en Postgres es la cola. El despacho real ocurre después, publicando un `NotificationCreatedEvent`
 que un `@TransactionalEventListener(phase = AFTER_COMMIT)` consume en un `ThreadPoolTaskExecutor`. Se descartó RabbitMQ/Kafka: un broker da
 durabilidad y escalado entre procesos que esta prueba no exige a esta escala, y agrega complejidad (contenedor propio, DLQs, consumer groups)
-para una ventana de 7 días. El trade-off real de este approach está anotado en
-"Trade-offs y limitaciones" — no cubre caídas del proceso a mitad del despacho.
+para una ventana de 7 días. Como el evento que dispara el despacho vive solo en memoria, una caída del proceso entre el `save()` y que el listener
+llegue a correr dejaría la notificación en `PENDING` para siempre — por eso existe `StuckNotificationRecoveryScheduler`: corre cada
+`notification.recovery.fixed-rate-ms` (60s por default) y reencola cualquier notificación en `PENDING`/`PROCESSING` cuyo `created_at` sea más viejo
+que `notification.recovery.timeout-ms` (2 minutos por default), usando el mismo camino de despacho (`NotificationProcessingListener.attemptDispatch`).
 
 **Autenticación: API Key estática por header (`X-API-KEY`)**, validada por un `ApiKeyAuthFilter` (`OncePerRequestFilter`) con comparación en tiempo
 constante (`MessageDigest.isEqual`). Se descartó JWT/OAuth2/Basic Auth: el endpoint es un punto de integración service-to-service sin identidad de
