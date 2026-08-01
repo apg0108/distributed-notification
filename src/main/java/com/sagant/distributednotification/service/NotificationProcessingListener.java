@@ -3,6 +3,7 @@ package com.sagant.distributednotification.service;
 import java.time.Instant;
 import java.util.Optional;
 
+import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -12,6 +13,7 @@ import com.sagant.distributednotification.domain.entity.Notification;
 import com.sagant.distributednotification.domain.model.NotificationCreatedEvent;
 import com.sagant.distributednotification.domain.model.NotificationStatus;
 import com.sagant.distributednotification.repository.NotificationRepository;
+import com.sagant.distributednotification.service.sender.NotificationSenderResolver;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,17 +23,26 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class NotificationProcessingListener {
 
+   static final String NOTIFICATION_ID_MDC_KEY = "notificationId";
+
    private final NotificationRepository notificationRepository;
+
+   private final NotificationSenderResolver notificationSenderResolver;
 
    @Async("notificationTaskExecutor")
    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
    public void onNotificationCreated(final NotificationCreatedEvent event) {
-      final Optional<Notification> optNotification = notificationRepository.findById(event.notificationId());
-      if (optNotification.isEmpty() || optNotification.get().getStatus() != NotificationStatus.PENDING) {
-         log.warn("Skipping processing for notification {}: no longer PENDING", event.notificationId());
-         return;
+      MDC.put(NOTIFICATION_ID_MDC_KEY, event.notificationId().toString());
+      try {
+         final Optional<Notification> optNotification = notificationRepository.findById(event.notificationId());
+         if (optNotification.isEmpty() || optNotification.get().getStatus() != NotificationStatus.PENDING) {
+            log.warn("Skipping processing for notification {}: no longer PENDING", event.notificationId());
+            return;
+         }
+         attemptDispatch(optNotification.get());
+      } finally {
+         MDC.remove(NOTIFICATION_ID_MDC_KEY);
       }
-      attemptDispatch(optNotification.get());
    }
 
    void attemptDispatch(final Notification notification) {
@@ -48,7 +59,6 @@ public class NotificationProcessingListener {
    }
 
    void dispatch(final Notification notification) {
-      log.info("Processing notification {} for recipient {} via channel {}", notification.getId(), notification.getRecipient(),
-            notification.getChannel());
+      notificationSenderResolver.resolve(notification.getChannel()).send(notification);
    }
 }

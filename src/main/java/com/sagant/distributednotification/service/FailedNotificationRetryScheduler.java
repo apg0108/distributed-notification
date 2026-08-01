@@ -2,6 +2,7 @@ package com.sagant.distributednotification.service;
 
 import java.util.List;
 
+import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -30,9 +31,14 @@ public class FailedNotificationRetryScheduler {
       final List<Notification> retryable = notificationRepository.findByStatusAndRetryCountLessThan(NotificationStatus.FAILED, maxAttempts);
 
       for (final Notification notification : retryable) {
-         notification.setRetryCount(notification.getRetryCount() + 1);
-         log.info("Retrying notification {} (attempt {}/{})", notification.getId(), notification.getRetryCount(), maxAttempts);
-         notificationProcessingListener.attemptDispatch(notification);
+         MDC.put(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY, notification.getId().toString());
+         try {
+            notification.setRetryCount(notification.getRetryCount() + 1);
+            log.info("Retrying notification {} (attempt {}/{})", notification.getId(), notification.getRetryCount(), maxAttempts);
+            notificationProcessingListener.attemptDispatch(notification);
+         } finally {
+            MDC.remove(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY);
+         }
       }
    }
 }

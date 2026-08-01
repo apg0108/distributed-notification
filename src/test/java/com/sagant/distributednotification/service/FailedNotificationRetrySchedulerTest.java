@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
 
 import com.sagant.distributednotification.config.property.NotificationRetryProperties;
 import com.sagant.distributednotification.domain.entity.Notification;
@@ -48,6 +49,7 @@ class FailedNotificationRetrySchedulerTest {
 
         assertThat(notification.getRetryCount()).isEqualTo(1);
         verify(notificationProcessingListener).attemptDispatch(notification);
+        assertThat(MDC.get(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY)).isNull();
     }
 
     @Test
