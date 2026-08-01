@@ -10,9 +10,11 @@ Desde la raíz del repo:
 docker compose up --build
 ```
 
-Esto construye la imagen de la app (build multistage con Maven + JDK 17, runtime en JRE 17 Alpine) y levanta dos servicios:
+Esto construye la imagen de la app (build multistage con Maven + JDK 17, runtime en JRE 17 Alpine) y levanta tres servicios:
 
 - **`db`** — PostgreSQL, con un healthcheck (`pg_isready`) que la app espera antes de arrancar.
+- **`mailhog`** — servidor SMTP de prueba que intercepta los correos del canal `EMAIL`. Su UI web queda en `http://localhost:8025` para ver los emails
+  recibidos.
 - **`app`** — el servicio Spring Boot. Corre las migraciones de Flyway automáticamente al iniciar (crea la tabla `notifications`).
 
 Cuando el contenedor `app` termina de arrancar, la API queda disponible en:
@@ -28,6 +30,15 @@ curl -X POST http://localhost:8080/api/v1/notifications \
   -H "X-API-KEY: api-key-notifications" \
   -H "Content-Type: application/json" \
   -d '{"recipient":"user@example.com","channel":"LOG","body":"Log1"}'
+```
+
+Para el canal `EMAIL`, el correo se puede ver en la UI de Mailhog (`http://localhost:8025`):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/notifications \
+  -H "X-API-KEY: api-key-notifications" \
+  -H "Content-Type: application/json" \
+  -d '{"recipient":"cliente@example.com","channel":"EMAIL","subject":"Bienvenido","body":"Gracias por registrarte"}'
 ```
 
 ## Precondiciones

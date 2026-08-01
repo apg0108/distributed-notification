@@ -91,7 +91,7 @@ class NotificationProcessingListenerTest {
 
         when(notificationRepository.findById(id)).thenReturn(Optional.of(notification));
         when(notificationSenderResolver.resolve(NotificationChannel.EMAIL)).thenReturn(notificationSender);
-        doThrow(new UnsupportedOperationException("EMAIL channel is not implemented yet")).when(notificationSender).send(notification);
+        doThrow(new RuntimeException("SMTP connection refused")).when(notificationSender).send(notification);
 
         listener.onNotificationCreated(
                 new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.EMAIL, "subject", "body", NotificationPriority.MEDIUM));
@@ -100,6 +100,6 @@ class NotificationProcessingListenerTest {
         verify(notificationRepository).save(savedCaptor.capture());
         assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.FAILED);
         assertThat(savedCaptor.getValue().getRetryCount()).isZero();
-        assertThat(savedCaptor.getValue().getLastError()).isEqualTo("EMAIL channel is not implemented yet");
+        assertThat(savedCaptor.getValue().getLastError()).isEqualTo("SMTP connection refused");
     }
 }
