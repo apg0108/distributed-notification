@@ -41,6 +41,14 @@ curl -X POST http://localhost:8080/api/v1/notifications \
   -d '{"recipient":"cliente@example.com","channel":"EMAIL","subject":"Bienvenido","body":"Gracias por registrarte"}'
 ```
 
+También se puede probar la API desde el navegador con Swagger UI, sin usar `curl`:
+
+```
+http://localhost:8080/api/v1/swagger-ui/index.html
+```
+
+Ahí mismo hay un botón **Authorize** para cargar el `X-API-KEY` una sola vez y que se aplique a los "Try it out" que se hagan después.
+
 ## Precondiciones
 
 Para levantar el proyecto vía Docker Compose (la forma soportada), solo hace falta:
