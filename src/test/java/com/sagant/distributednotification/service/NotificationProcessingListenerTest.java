@@ -2,7 +2,10 @@ package com.sagant.distributednotification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,6 +24,7 @@ import org.slf4j.LoggerFactory;
 import com.sagant.distributednotification.domain.entity.Notification;
 import com.sagant.distributednotification.domain.model.NotificationChannel;
 import com.sagant.distributednotification.domain.model.NotificationCreatedEvent;
+import com.sagant.distributednotification.domain.model.NotificationPriority;
 import com.sagant.distributednotification.domain.model.NotificationStatus;
 import com.sagant.distributednotification.repository.NotificationRepository;
 
@@ -63,7 +67,8 @@ class NotificationProcessingListenerTest {
 
         when(notificationRepository.findById(id)).thenReturn(Optional.of(notification));
 
-        listener.onNotificationCreated(new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.LOG, "body"));
+        listener.onNotificationCreated(
+                new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.LOG, "subject", "body", NotificationPriority.MEDIUM));
 
         assertThat(logAppender.list).anyMatch(event -> event.getFormattedMessage().contains(id.toString()));
 
@@ -82,8 +87,33 @@ class NotificationProcessingListenerTest {
 
         when(notificationRepository.findById(id)).thenReturn(Optional.of(notification));
 
-        listener.onNotificationCreated(new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.LOG, "body"));
+        listener.onNotificationCreated(
+                new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.LOG, "subject", "body", NotificationPriority.MEDIUM));
 
         verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    void onNotificationCreated_whenDispatchFails_marksAsFailedWithoutRetryingInline() {
+        final UUID id = UUID.randomUUID();
+        final Notification notification = new Notification();
+        notification.setId(id);
+        notification.setStatus(NotificationStatus.PENDING);
+
+        when(notificationRepository.findById(id)).thenReturn(Optional.of(notification));
+
+        final NotificationProcessingListener spyListener = spy(listener);
+        doThrow(new RuntimeException("dispatch failure")).when(spyListener).dispatch(notification);
+
+        spyListener.onNotificationCreated(
+                new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.LOG, "subject", "body", NotificationPriority.MEDIUM));
+
+        verify(spyListener, times(1)).dispatch(notification);
+
+        final ArgumentCaptor<Notification> savedCaptor = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(savedCaptor.capture());
+        assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(savedCaptor.getValue().getRetryCount()).isZero();
+        assertThat(savedCaptor.getValue().getLastError()).isEqualTo("dispatch failure");
     }
 }

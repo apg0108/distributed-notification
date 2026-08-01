@@ -57,7 +57,9 @@ class NotificationServiceTest {
         savedEntity.setId(UUID.randomUUID());
         savedEntity.setRecipient("user@example.com");
         savedEntity.setChannel(NotificationChannel.LOG);
+        savedEntity.setSubject("subject");
         savedEntity.setBody("body");
+        savedEntity.setPriority(NotificationPriority.HIGH);
         savedEntity.setStatus(NotificationStatus.PENDING);
 
         final NotificationResponse expectedResponse = new NotificationResponse(
@@ -73,7 +75,8 @@ class NotificationServiceTest {
         assertThat(actualResponse).isEqualTo(expectedResponse);
         Mockito
               .verify(eventPublisher)
-              .publishEvent(new NotificationCreatedEvent(savedEntity.getId(), "user@example.com", NotificationChannel.LOG, "body"));
+              .publishEvent(new NotificationCreatedEvent(savedEntity.getId(), "user@example.com", NotificationChannel.LOG, "subject", "body",
+                    NotificationPriority.HIGH));
     }
 
     @Test

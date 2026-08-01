@@ -31,12 +31,24 @@ public class NotificationProcessingListener {
          log.warn("Skipping processing for notification {}: no longer PENDING", event.notificationId());
          return;
       }
+      attemptDispatch(optNotification.get());
+   }
 
-      final Notification notification = optNotification.get();
-      log.info("Processing notification {} for recipient {} via channel {}", event.notificationId(), event.recipient(), event.channel());
-
-      notification.setStatus(NotificationStatus.SENT);
-      notification.setSentAt(Instant.now());
+   void attemptDispatch(final Notification notification) {
+      try {
+         dispatch(notification);
+         notification.setStatus(NotificationStatus.SENT);
+         notification.setSentAt(Instant.now());
+      } catch (final Exception ex) {
+         notification.setLastError(ex.getMessage());
+         notification.setStatus(NotificationStatus.FAILED);
+         log.error("Notification {} failed: {}", notification.getId(), ex.getMessage());
+      }
       notificationRepository.save(notification);
+   }
+
+   void dispatch(final Notification notification) {
+      log.info("Processing notification {} for recipient {} via channel {}", notification.getId(), notification.getRecipient(),
+            notification.getChannel());
    }
 }
