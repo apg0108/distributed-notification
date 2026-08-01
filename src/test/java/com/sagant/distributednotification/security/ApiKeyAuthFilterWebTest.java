@@ -80,4 +80,14 @@ class ApiKeyAuthFilterWebTest {
    void actuatorHealthBypassesTheApiKeyFilter() throws Exception {
       mockMvc.perform(get("/actuator/health")).andExpect(status().isNotFound());
    }
+
+   @Test
+   void actuatorMetricsBypassesTheApiKeyFilter() throws Exception {
+      mockMvc.perform(get("/actuator/metrics")).andExpect(status().isNotFound());
+   }
+
+   @Test
+   void actuatorInfoBypassesTheApiKeyFilter() throws Exception {
+      mockMvc.perform(get("/actuator/info")).andExpect(status().isNotFound());
+   }
 }
