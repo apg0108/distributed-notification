@@ -37,7 +37,8 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
    @Override
    protected boolean shouldNotFilter(final HttpServletRequest request) {
       final String pathWithinApplication = request.getRequestURI().substring(request.getContextPath().length());
-      return pathWithinApplication.startsWith("/actuator");
+      return pathWithinApplication.startsWith("/actuator") || pathWithinApplication.startsWith("/swagger-ui")
+            || pathWithinApplication.startsWith("/v3/api-docs");
    }
 
    @Override
