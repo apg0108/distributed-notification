@@ -42,19 +42,17 @@ class NotificationServiceTest {
                 "user@example.com", NotificationChannel.LOG, "subject", "body",
                 NotificationPriority.HIGH, Map.of("k", "v"));
 
-        final Notification entityFromMapper = Notification.builder()
-                .recipient("user@example.com")
-                .channel(NotificationChannel.LOG)
-                .body("body")
-                .build();
+        final Notification entityFromMapper = new Notification();
+        entityFromMapper.setRecipient("user@example.com");
+        entityFromMapper.setChannel(NotificationChannel.LOG);
+        entityFromMapper.setBody("body");
 
-        final Notification savedEntity = Notification.builder()
-                .id(UUID.randomUUID())
-                .recipient("user@example.com")
-                .channel(NotificationChannel.LOG)
-                .body("body")
-                .status(NotificationStatus.PENDING)
-                .build();
+        final Notification savedEntity = new Notification();
+        savedEntity.setId(UUID.randomUUID());
+        savedEntity.setRecipient("user@example.com");
+        savedEntity.setChannel(NotificationChannel.LOG);
+        savedEntity.setBody("body");
+        savedEntity.setStatus(NotificationStatus.PENDING);
 
         final NotificationResponse expectedResponse = new NotificationResponse(
                 savedEntity.getId(), "user@example.com", NotificationChannel.LOG, "subject", "body",
@@ -74,8 +72,9 @@ class NotificationServiceTest {
     void createNotification_invokesMapperAndRepositoryInOrder_withNoExtraCalls() {
         final NotificationRequest request = new NotificationRequest(
                 "user@example.com", NotificationChannel.EMAIL, null, "body", null, null);
-        final Notification entityFromMapper = Notification.builder().build();
-        final Notification savedEntity = Notification.builder().id(UUID.randomUUID()).build();
+        final Notification entityFromMapper = new Notification();
+        final Notification savedEntity = new Notification();
+        savedEntity.setId(UUID.randomUUID());
         final NotificationResponse response = new NotificationResponse(
                 savedEntity.getId(), "user@example.com", NotificationChannel.EMAIL, null, "body",
                 NotificationPriority.MEDIUM, null, NotificationStatus.PENDING, 0, null, null, null, null);
