@@ -97,7 +97,7 @@ manda un correo real por SMTP (`JavaMailSender`) contra un Mailhog descartable e
 constructor un `Map<NotificationChannel, NotificationSender>` a partir de **todos** los beans `NotificationSender` que Spring detecta — agregar un
 canal nuevo, sin tocar el listener que despacha.
 
-**Reintentos: scheduler propio de polling, `FailedNotificationRetryScheduler` corre cada `notification.retry.fixed-rate-ms` (30s por default), busca
+**Reintentos**: scheduler propio de polling, `FailedNotificationRetryScheduler` corre cada `notification.retry.fixed-rate-ms` (30s por default), busca
 notificaciones `FAILED` con
 `retry_count < notification.retry.max-attempts` (1 por default), incrementa el contador y vuelve a invocar el mismo camino de despacho. Se prefirió
 esto sobre `@Retryable`/`@Recover` porque separa con claridad "el intento inicial" (parte del flujo de creación, corre en el executor async) de "la
