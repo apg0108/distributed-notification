@@ -1,7 +1,6 @@
 package com.sagant.distributednotification.repository;
 
 import java.time.Instant;
-import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -14,5 +13,5 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
    List<Notification> findByStatusAndRetryCountLessThan(NotificationStatus status, int retryCount);
 
-   List<Notification> findByStatusInAndCreatedAtBefore(Collection<NotificationStatus> statuses, Instant cutoff);
+   List<Notification> findByStatusAndCreatedAtBefore(NotificationStatus status, Instant cutoff);
 }

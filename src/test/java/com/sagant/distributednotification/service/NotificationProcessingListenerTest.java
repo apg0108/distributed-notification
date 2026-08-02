@@ -10,10 +10,10 @@ import static org.mockito.Mockito.when;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
@@ -27,6 +27,8 @@ import com.sagant.distributednotification.repository.NotificationRepository;
 import com.sagant.distributednotification.service.sender.NotificationSender;
 import com.sagant.distributednotification.service.sender.NotificationSenderResolver;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+
 @ExtendWith(MockitoExtension.class)
 class NotificationProcessingListenerTest {
 
@@ -39,8 +41,15 @@ class NotificationProcessingListenerTest {
     @Mock
     private NotificationSender notificationSender;
 
-    @InjectMocks
+    private SimpleMeterRegistry meterRegistry;
+
     private NotificationProcessingListener listener;
+
+    @BeforeEach
+    void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+        listener = new NotificationProcessingListener(notificationRepository, notificationSenderResolver, meterRegistry);
+    }
 
     @Test
     void onNotificationCreated_withPendingNotification_dispatchesAndMarksAsSent() {
@@ -64,6 +73,7 @@ class NotificationProcessingListenerTest {
         assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.SENT);
         assertThat(savedCaptor.getValue().getSentAt()).isNotNull();
         assertThat(MDC.get(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY)).isNull();
+        assertThat(meterRegistry.get("notifications.sent").tag("channel", "LOG").counter().count()).isEqualTo(1.0);
     }
 
     @Test
@@ -101,5 +111,6 @@ class NotificationProcessingListenerTest {
         assertThat(savedCaptor.getValue().getStatus()).isEqualTo(NotificationStatus.FAILED);
         assertThat(savedCaptor.getValue().getRetryCount()).isZero();
         assertThat(savedCaptor.getValue().getLastError()).isEqualTo("SMTP connection refused");
+        assertThat(meterRegistry.get("notifications.failed").tag("channel", "EMAIL").counter().count()).isEqualTo(1.0);
     }
 }

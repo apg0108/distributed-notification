@@ -20,8 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class StuckNotificationRecoveryScheduler {
 
-   private static final List<NotificationStatus> RECOVERABLE_STATUSES = List.of(NotificationStatus.PENDING, NotificationStatus.PROCESSING);
-
    private final NotificationRepository notificationRepository;
 
    private final NotificationProcessingListener notificationProcessingListener;
@@ -31,12 +29,12 @@ public class StuckNotificationRecoveryScheduler {
    @Scheduled(fixedRateString = "${notification.recovery.fixed-rate-ms:60000}")
    public void recoverStuckNotifications() {
       final Instant cutoff = Instant.now().minusMillis(notificationRecoveryProperties.timeoutMs());
-      final List<Notification> stuck = notificationRepository.findByStatusInAndCreatedAtBefore(RECOVERABLE_STATUSES, cutoff);
+      final List<Notification> stuck = notificationRepository.findByStatusAndCreatedAtBefore(NotificationStatus.PENDING, cutoff);
 
       for (final Notification notification : stuck) {
          MDC.put(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY, notification.getId().toString());
          try {
-            log.warn("Recovering notification {} stuck in {} since {}", notification.getId(), notification.getStatus(), notification.getUpdatedAt());
+            log.warn("Recovering notification {} stuck in {} since {}", notification.getId(), notification.getStatus(), notification.getCreatedAt());
             notificationProcessingListener.attemptDispatch(notification);
          } finally {
             MDC.remove(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY);

@@ -2,7 +2,6 @@ package com.sagant.distributednotification.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -28,55 +27,55 @@ import com.sagant.distributednotification.repository.NotificationRepository;
 @ExtendWith(MockitoExtension.class)
 class StuckNotificationRecoverySchedulerTest {
 
-   @Mock
-   private NotificationRepository notificationRepository;
+    @Mock
+    private NotificationRepository notificationRepository;
 
-   @Mock
-   private NotificationProcessingListener notificationProcessingListener;
+    @Mock
+    private NotificationProcessingListener notificationProcessingListener;
 
-   private StuckNotificationRecoveryScheduler scheduler;
+    private StuckNotificationRecoveryScheduler scheduler;
 
-   @BeforeEach
-   void setUp() {
-      scheduler = new StuckNotificationRecoveryScheduler(notificationRepository, notificationProcessingListener,
-            new NotificationRecoveryProperties(120_000));
-   }
+    @BeforeEach
+    void setUp() {
+        scheduler = new StuckNotificationRecoveryScheduler(notificationRepository, notificationProcessingListener,
+                new NotificationRecoveryProperties(120_000));
+    }
 
-   @Test
-   void recoverStuckNotifications_reDispatchesStuckNotifications() {
-      final Notification notification = new Notification();
-      notification.setId(UUID.randomUUID());
-      notification.setStatus(NotificationStatus.PENDING);
-      notification.setUpdatedAt(Instant.now().minusSeconds(300));
+    @Test
+    void recoverStuckNotifications_reDispatchesStuckNotifications() {
+        final Notification notification = new Notification();
+        notification.setId(UUID.randomUUID());
+        notification.setStatus(NotificationStatus.PENDING);
+        notification.setCreatedAt(Instant.now().minusSeconds(300));
 
-      when(notificationRepository.findByStatusInAndCreatedAtBefore(anyCollection(), any(Instant.class))).thenReturn(List.of(notification));
+        when(notificationRepository.findByStatusAndCreatedAtBefore(eq(NotificationStatus.PENDING), any(Instant.class)))
+                .thenReturn(List.of(notification));
 
-      scheduler.recoverStuckNotifications();
+        scheduler.recoverStuckNotifications();
 
-      verify(notificationProcessingListener).attemptDispatch(notification);
-      assertThat(MDC.get(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY)).isNull();
-   }
+        verify(notificationProcessingListener).attemptDispatch(notification);
+        assertThat(MDC.get(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY)).isNull();
+    }
 
-   @Test
-   void recoverStuckNotifications_passesPendingAndProcessingStatusesWithCutoffInThePast() {
-      when(notificationRepository.findByStatusInAndCreatedAtBefore(anyCollection(), any(Instant.class))).thenReturn(List.of());
+    @Test
+    void recoverStuckNotifications_passesPendingStatusWithCutoffInThePast() {
+        when(notificationRepository.findByStatusAndCreatedAtBefore(eq(NotificationStatus.PENDING), any(Instant.class))).thenReturn(List.of());
 
-      final Instant beforeRun = Instant.now();
-      scheduler.recoverStuckNotifications();
+        final Instant beforeRun = Instant.now();
+        scheduler.recoverStuckNotifications();
 
-      final ArgumentCaptor<Instant> cutoffCaptor = ArgumentCaptor.forClass(Instant.class);
-      verify(notificationRepository).findByStatusInAndCreatedAtBefore(eq(List.of(NotificationStatus.PENDING, NotificationStatus.PROCESSING)),
-            cutoffCaptor.capture());
+        final ArgumentCaptor<Instant> cutoffCaptor = ArgumentCaptor.forClass(Instant.class);
+        verify(notificationRepository).findByStatusAndCreatedAtBefore(eq(NotificationStatus.PENDING), cutoffCaptor.capture());
 
-      assertThat(cutoffCaptor.getValue()).isBefore(beforeRun);
-   }
+        assertThat(cutoffCaptor.getValue()).isBefore(beforeRun);
+    }
 
-   @Test
-   void recoverStuckNotifications_whenNoneStuck_doesNothing() {
-      when(notificationRepository.findByStatusInAndCreatedAtBefore(anyCollection(), any(Instant.class))).thenReturn(List.of());
+    @Test
+    void recoverStuckNotifications_whenNoneStuck_doesNothing() {
+        when(notificationRepository.findByStatusAndCreatedAtBefore(eq(NotificationStatus.PENDING), any(Instant.class))).thenReturn(List.of());
 
-      scheduler.recoverStuckNotifications();
+        scheduler.recoverStuckNotifications();
 
-      verifyNoInteractions(notificationProcessingListener);
-   }
+        verifyNoInteractions(notificationProcessingListener);
+    }
 }

@@ -9,7 +9,6 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import com.sagant.distributednotification.domain.exception.NotificationNotFoundException;
 import com.sagant.distributednotification.domain.model.ErrorResponse;
 import com.sagant.distributednotification.domain.model.ErrorResponse.FieldError;
 
@@ -26,12 +25,6 @@ public class GlobalExceptionHandler {
             .toList();
       final ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST.value(), "Validation failed", "One or more fields are invalid", fieldErrors);
       return ResponseEntity.badRequest().body(body);
-   }
-
-   @ExceptionHandler(NotificationNotFoundException.class)
-   public ResponseEntity<ErrorResponse> handleNotFound(final NotificationNotFoundException ex) {
-      final ErrorResponse body = ErrorResponse.of(HttpStatus.NOT_FOUND.value(), "Not found", ex.getMessage());
-      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
    }
 
    @ExceptionHandler(Exception.class)

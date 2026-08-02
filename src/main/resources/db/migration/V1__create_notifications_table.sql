@@ -10,9 +10,8 @@ CREATE TABLE notifications (
     retry_count   INTEGER      NOT NULL DEFAULT 0,
     last_error    TEXT,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
     sent_at       TIMESTAMPTZ
 );
 
 CREATE INDEX idx_notifications_status ON notifications (status);
-CREATE INDEX idx_notifications_status_updated_at ON notifications (status, updated_at);
+CREATE INDEX idx_notifications_status_created_at ON notifications (status, created_at);

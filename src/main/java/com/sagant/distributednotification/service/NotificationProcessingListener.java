@@ -15,6 +15,7 @@ import com.sagant.distributednotification.domain.model.NotificationStatus;
 import com.sagant.distributednotification.repository.NotificationRepository;
 import com.sagant.distributednotification.service.sender.NotificationSenderResolver;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +29,8 @@ public class NotificationProcessingListener {
    private final NotificationRepository notificationRepository;
 
    private final NotificationSenderResolver notificationSenderResolver;
+
+   private final MeterRegistry meterRegistry;
 
    @Async("notificationTaskExecutor")
    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -50,10 +53,12 @@ public class NotificationProcessingListener {
          dispatch(notification);
          notification.setStatus(NotificationStatus.SENT);
          notification.setSentAt(Instant.now());
+         meterRegistry.counter("notifications.sent", "channel", notification.getChannel().name()).increment();
       } catch (final Exception ex) {
          notification.setLastError(ex.getMessage());
          notification.setStatus(NotificationStatus.FAILED);
          log.error("Notification {} failed: {}", notification.getId(), ex.getMessage());
+         meterRegistry.counter("notifications.failed", "channel", notification.getChannel().name()).increment();
       }
       notificationRepository.save(notification);
    }
