@@ -82,8 +82,8 @@ que un `@TransactionalEventListener(phase = AFTER_COMMIT)` consume en un `Thread
 durabilidad y escalado entre procesos que esta prueba no exige a esta escala, y agrega complejidad (contenedor propio, DLQs, consumer groups)
 para una ventana de 7 días. Como el evento que dispara el despacho vive solo en memoria, una caída del proceso entre el `save()` y que el listener
 llegue a correr dejaría la notificación en `PENDING` para siempre — por eso existe `StuckNotificationRecoveryScheduler`: corre cada
-`notification.recovery.fixed-rate-ms` (60s por default) y reencola cualquier notificación en `PENDING`/`PROCESSING` cuyo `created_at` sea más viejo
-que `notification.recovery.timeout-ms` (2 minutos por default), usando el mismo camino de despacho (`NotificationProcessingListener.attemptDispatch`).
+`notification.recovery.fixed-rate-ms` (60s por default) y reencola cualquier notificación en `PENDING` cuyo `created_at` sea más viejo que
+`notification.recovery.timeout-ms` (2 minutos por default), usando el mismo camino de despacho (`NotificationProcessingListener.attemptDispatch`).
 
 **Autenticación: API Key estática por header (`X-API-KEY`)**, validada por un `ApiKeyAuthFilter` (`OncePerRequestFilter`) con comparación en tiempo
 constante (`MessageDigest.isEqual`). Se descartó JWT/OAuth2/Basic Auth: el endpoint es un punto de integración service-to-service sin identidad de
@@ -102,8 +102,7 @@ notificaciones `FAILED` con
 `retry_count < notification.retry.max-attempts` (1 por default), incrementa el contador y vuelve a invocar el mismo camino de despacho. Se prefirió
 esto sobre `@Retryable`/`@Recover` porque separa con claridad "el intento inicial" (parte del flujo de creación, corre en el executor async) de "la
 recuperación" (un proceso independiente y observable en el tiempo, con su propio intervalo configurable), sin necesitar que Spring AOP proxyee el
-método de envío. El costo: se pierde el backoff exponencial y las políticas de reintento más ricas que Spring Retry da out-of-the-box — con un solo
-reintento y sin backoff, no hace falta hoy, pero no escala bien si el máximo de intentos creciera.
+método de envío. El costo: se pierde el backoff exponencial y las políticas de reintento más ricas que Spring Retry da.
 
 **Flyway en vez de `ddl-auto=update`.** Migraciones versionadas y revisables (`V1__create_notifications_table.sql`), y deja un schema determinístico.
 
@@ -112,8 +111,11 @@ canal LOG. Al arrancar cada intento de despacho — tanto el disparo inicial en 
 `FailedNotificationRetryScheduler` — se hace `MDC.put("notificationId", id)` y se limpia en un `finally`. Esto permite reconstruir el ciclo de vida
 completo de una notificación puntual filtrando por ese campo en cualquier herramienta de logs.
 
-**Observabilidad con Actuator, sin métricas custom de Micrometer.** `/actuator/health`, `/actuator/info` y `/actuator/metrics` están expuestos. El
-trade-off de exponer esa información sin protección queda anotado abajo.
+**Observabilidad con Actuator.** `/actuator/health`, `/actuator/info` y `/actuator/metrics` están expuestos. Además de las métricas que Spring Boot
+registra solo (JVM, pool de Hikari, executor, HTTP), `NotificationProcessingListener` registra dos contadores propios vía `MeterRegistry`:
+`notifications.sent` y `notifications.failed`, ambos tageados por `channel` — así se puede ver en `/actuator/metrics/notifications.sent` cuántas
+notificaciones se mandaron por `LOG` vs `EMAIL`, sin depender de parsear logs. El trade-off de exponer esa información sin protección queda anotado
+abajo.
 
 ## Trade-offs y limitaciones
 
@@ -138,13 +140,12 @@ Funcionalidad dejada afuera conscientemente, o implementada de forma más simple
   propio listener HTTP.
 - **Datasource**: en vez de que Spring Boot autoconfigure HikariCP desde `application.properties`, el datasource lo definiría y poolearía el servidor
   de aplicaciones (config propia en `standalone.xml`), y la app lo buscaría por JNDI (`java:/jdbc/NotificationDS`) — el connection pooling, las
-  credenciales y el failover pasan a ser responsabilidad operativa del app server, no de la aplicación.
+  credenciales pasan a ser responsabilidad operativa del app server, no de la aplicación.
 - **Ejecución asíncrona**: `@Async` con `ThreadPoolTaskExecutor` (usado hoy en `AsyncConfig`/`NotificationProcessingListener`) crea threads no
   gestionados por el contenedor, algo que la especificación EE Concurrency desaconseja explícitamente en un app server. Se reemplazaría por un
-  `ManagedExecutorService` inyectado con `@Resource` (threads trackeados, con propagación de contexto de seguridad/transacción), o, de forma más
-  idiomática a EE, empujando la notificación a una cola JMS consumida por un Message-Driven Bean — el equivalente EE genuino de lo que la fila en
-  Postgres aproxima en este ejercicio. Lo mismo aplica al `@Scheduled` de `FailedNotificationRetryScheduler`, que pasaría a ser un timer EE
-  (`@Schedule` de EJB) o un job disparado por el propio contenedor.
+  `ManagedExecutorService` inyectado con `@Resource`, o, de forma más idiomática a EE, empujando la notificación a una cola JMS consumida por un
+  Message-Driven Bean — el equivalente EE genuino de lo que la fila en Postgres aproxima en este ejercicio. Lo mismo aplica al `@Scheduled` de
+  `FailedNotificationRetryScheduler`, que pasaría a ser un timer EE (`@Schedule` de EJB) o un job disparado por el propio contenedor.
 - **Seguridad**: el `ApiKeyAuthFilter` (`OncePerRequestFilter`) + cadena de Spring Security se reemplazaría por Jakarta EE Security
   (`jakarta.security.enterprise`) con un `HttpAuthenticationMechanism` custom validando la API key, respaldado por un `IdentityStore`, integrando la
   autenticación con el realm de seguridad del app server en vez de con el `SecurityContextHolder` de Spring.
