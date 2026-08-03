@@ -9,7 +9,6 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentMatchers;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -19,7 +18,6 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import com.sagant.distributednotification.domain.entity.Notification;
 import com.sagant.distributednotification.domain.model.NotificationChannel;
-import com.sagant.distributednotification.domain.model.NotificationCreatedEvent;
 import com.sagant.distributednotification.domain.model.NotificationPriority;
 import com.sagant.distributednotification.domain.model.NotificationRequest;
 import com.sagant.distributednotification.domain.model.NotificationResponse;
@@ -73,10 +71,7 @@ class NotificationServiceTest {
         final NotificationResponse actualResponse = notificationService.createNotification(request);
 
         assertThat(actualResponse).isEqualTo(expectedResponse);
-        Mockito
-              .verify(eventPublisher)
-              .publishEvent(new NotificationCreatedEvent(savedEntity.getId(), "user@example.com", NotificationChannel.LOG, "subject", "body",
-                    NotificationPriority.HIGH));
+        Mockito.verify(eventPublisher).publishEvent(savedEntity.getId());
     }
 
     @Test
@@ -99,7 +94,7 @@ class NotificationServiceTest {
         final InOrder inOrder = Mockito.inOrder(notificationMapper, notificationRepository, eventPublisher);
         inOrder.verify(notificationMapper).toEntity(request);
         inOrder.verify(notificationRepository).save(entityFromMapper);
-        inOrder.verify(eventPublisher).publishEvent(ArgumentMatchers.any(NotificationCreatedEvent.class));
+        inOrder.verify(eventPublisher).publishEvent(savedEntity.getId());
         inOrder.verify(notificationMapper).toResponse(savedEntity);
         verifyNoMoreInteractions(notificationMapper, notificationRepository, eventPublisher);
     }

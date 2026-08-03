@@ -2,6 +2,7 @@ package com.sagant.distributednotification.service;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.slf4j.MDC;
 import org.springframework.scheduling.annotation.Async;
@@ -10,7 +11,6 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import com.sagant.distributednotification.domain.entity.Notification;
-import com.sagant.distributednotification.domain.model.NotificationCreatedEvent;
 import com.sagant.distributednotification.domain.model.NotificationStatus;
 import com.sagant.distributednotification.repository.NotificationRepository;
 import com.sagant.distributednotification.service.sender.NotificationSenderResolver;
@@ -34,12 +34,12 @@ public class NotificationProcessingListener {
 
    @Async("notificationTaskExecutor")
    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-   public void onNotificationCreated(final NotificationCreatedEvent event) {
-      MDC.put(NOTIFICATION_ID_MDC_KEY, event.notificationId().toString());
+   public void onNotificationCreated(final UUID notificationId) {
+      MDC.put(NOTIFICATION_ID_MDC_KEY, notificationId.toString());
       try {
-         final Optional<Notification> optNotification = notificationRepository.findById(event.notificationId());
+         final Optional<Notification> optNotification = notificationRepository.findById(notificationId);
          if (optNotification.isEmpty() || optNotification.get().getStatus() != NotificationStatus.PENDING) {
-            log.warn("Skipping processing for notification {}: no longer PENDING", event.notificationId());
+            log.warn("Skipping processing for notification {}: no longer PENDING", notificationId);
             return;
          }
          attemptDispatch(optNotification.get());

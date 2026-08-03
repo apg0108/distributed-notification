@@ -5,7 +5,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sagant.distributednotification.domain.entity.Notification;
-import com.sagant.distributednotification.domain.model.NotificationCreatedEvent;
 import com.sagant.distributednotification.domain.model.NotificationRequest;
 import com.sagant.distributednotification.domain.model.NotificationResponse;
 import com.sagant.distributednotification.mapper.NotificationMapper;
@@ -27,9 +26,7 @@ public class NotificationService {
    public NotificationResponse createNotification(final NotificationRequest request) {
       final Notification notification = notificationMapper.toEntity(request);
       final Notification saved = notificationRepository.save(notification);
-      eventPublisher.publishEvent(
-            new NotificationCreatedEvent(saved.getId(), saved.getRecipient(), saved.getChannel(), saved.getSubject(), saved.getBody(),
-                  saved.getPriority()));
+      eventPublisher.publishEvent(saved.getId());
       return notificationMapper.toResponse(saved);
    }
 }
