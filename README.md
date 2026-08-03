@@ -119,7 +119,7 @@ abajo.
 
 ## Trade-offs y limitaciones
 
-Funcionalidad dejada afuera conscientemente, o implementada de forma más simple de lo ideal, listada sin vueltas:
+Funcionalidad dejada afuera conscientemente, o implementada de forma más simple de lo ideal:
 
 - **El reintento es un scheduler de polling propio, no Spring Retry.** Intervalo fijo, sin backoff exponencial, un solo reintento por default.
   Suficiente para el alcance de esta prueba, pero menos flexible que una política declarativa si el caso de uso creciera.
