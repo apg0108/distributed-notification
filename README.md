@@ -135,20 +135,38 @@ Funcionalidad dejada afuera conscientemente, o implementada de forma más simple
 
 ## Consideración sobre Jakarta EE
 
-- **Packaging**: el JAR autocontenido con Tomcat embebido pasaría a ser un WAR (`<packaging>war</packaging>`, `spring-boot-starter-tomcat` en
-  `provided`) extendiendo `SpringBootServletInitializer`, desplegado en un servidor como WildFly — la app deja de ser dueña del ciclo de vida de su
-  propio listener HTTP.
-- **Datasource**: en vez de que Spring Boot autoconfigure HikariCP desde `application.properties`, el datasource lo definiría y poolearía el servidor
-  de aplicaciones (config propia en `standalone.xml`), y la app lo buscaría por JNDI (`java:/jdbc/NotificationDS`) — el connection pooling, las
-  credenciales pasan a ser responsabilidad operativa del app server, no de la aplicación.
-- **Ejecución asíncrona**: `@Async` con `ThreadPoolTaskExecutor` (usado hoy en `AsyncConfig`/`NotificationProcessingListener`) crea threads no
-  gestionados por el contenedor, algo que la especificación EE Concurrency desaconseja explícitamente en un app server. Se reemplazaría por un
-  `ManagedExecutorService` inyectado con `@Resource`, o, de forma más idiomática a EE, empujando la notificación a una cola JMS consumida por un
-  Message-Driven Bean — el equivalente EE genuino de lo que la fila en Postgres aproxima en este ejercicio. Lo mismo aplica al `@Scheduled` de
-  `FailedNotificationRetryScheduler`, que pasaría a ser un timer EE (`@Schedule` de EJB) o un job disparado por el propio contenedor.
-- **Seguridad**: el `ApiKeyAuthFilter` (`OncePerRequestFilter`) + cadena de Spring Security se reemplazaría por Jakarta EE Security
-  (`jakarta.security.enterprise`) con un `HttpAuthenticationMechanism` custom validando la API key, respaldado por un `IdentityStore`, integrando la
-  autenticación con el realm de seguridad del app server en vez de con el `SecurityContextHolder` de Spring.
-- **Observabilidad**: los endpoints HTTP de Actuator perderían protagonismo; la consola de administración/CLI del app server y las MBeans JMX pasarían
-  a ser la superficie operativa principal, con métricas exportadas vía el subsistema de monitoreo propio del servidor o un puente JMX-a-Micrometer en
-  vez de `/actuator`.
+Este servicio está pensado como una aplicación Spring Boot autocontenida: trae su propio Tomcat, arma su propio pool de conexiones, crea sus propios
+threads y decide sola cómo autenticar y cómo exponerse. Si hubiera que desplegarlo en un servidor de aplicaciones como WildFly, la premisa se
+invierte: el contenedor pasa a ser el dueño del ciclo de vida, de los recursos y de la seguridad, y varias decisiones de diseño de este proyecto
+habría que replanteárselas.
+
+**El empaquetado.** Hoy el build produce un JAR ejecutable con Tomcat embebido. En WildFly eso no tiene sentido — el servidor ya trae su propio
+listener HTTP — así que el proyecto pasaría a empaquetarse como WAR (`<packaging>war</packaging>`, con `spring-boot-starter-tomcat` en scope
+`provided`) y la clase principal extendería `SpringBootServletInitializer`. Es un cambio chico en código pero grande en filosofía: la app deja de
+arrancarse a sí misma y pasa a ser algo que el servidor despliega.
+
+**La conexión a base de datos.** Ahora mismo Spring Boot autoconfigura HikariCP leyendo `application.properties`, y las credenciales viajan con la
+app. En un app server lo natural es al revés: el datasource se define en la configuración de WildFly (`standalone.xml`), el servidor se encarga del
+pooling, y la aplicación solo lo pide por nombre JNDI (algo como `java:/jdbc/NotificationDS`). La ganancia es operativa: las credenciales y el tuning
+del pool los administra quien opera el servidor, sin recompilar ni tocar la app.
+
+**El procesamiento asíncrono — el cambio más profundo.** El corazón de este diseño es un `@Async` sobre un `ThreadPoolTaskExecutor` propio
+(`AsyncConfig`), y eso es justo lo que un servidor de aplicaciones no quiere: threads que el contenedor no conoce ni gestiona, algo que la
+especificación de EE Concurrency desaconseja explícitamente. La versión mínima del cambio es reemplazar el executor por un `ManagedExecutorService`
+inyectado con `@Resource`, para que los threads los preste el contenedor. Pero la versión más idiomática sería empujar la notificación a una cola JMS
+y consumirla con un Message-Driven Bean — que es, en el fondo, la versión "de verdad" de lo que la fila `PENDING` en Postgres aproxima en este
+ejercicio. Lo mismo corre para los schedulers de reintento y recuperación: `@Scheduled` crea threads propios, así que pasarían a ser timers del
+contenedor (`@Schedule` de EJB).
+
+**La seguridad.** El `ApiKeyAuthFilter` vive dentro de la cadena de filtros de Spring Security y deposita la autenticación en el
+`SecurityContextHolder`. En Jakarta EE el equivalente es un `HttpAuthenticationMechanism` custom (de `jakarta.security.enterprise`) que valide la API
+key contra un `IdentityStore`, integrándose con el realm de seguridad del propio servidor. La lógica de validación sería la misma; lo que cambia es
+con quién se integra.
+
+**La observabilidad.** Los endpoints de Actuator perderían protagonismo: en el mundo WildFly la superficie operativa habitual es la consola de
+administración, el CLI y las MBeans de JMX. Las métricas custom (`notifications.sent` / `notifications.failed`) habría que exportarlas por esa vía, o
+mantener un puente entre JMX y Micrometer en lugar de depender de `/actuator`.
+
+En resumen: la lógica de negocio (el Strategy de canales, el modelo de estados, los reintentos como concepto) sobreviviría intacta. Lo que cambia es
+todo lo que hoy la app hace por sí misma — servir HTTP, poolear conexiones, crear threads, autenticar, exponerse — porque en un app server esas
+responsabilidades son del contenedor.
