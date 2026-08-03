@@ -1,5 +1,6 @@
 package com.sagant.distributednotification.service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.MDC;
@@ -28,7 +29,8 @@ public class FailedNotificationRetryScheduler {
    @Scheduled(fixedRateString = "${notification.retry.fixed-rate-ms:30000}")
    public void retryFailedNotifications() {
       final int maxAttempts = notificationRetryProperties.maxAttempts();
-      final List<Notification> retryable = notificationRepository.findByStatusAndRetryCountLessThan(NotificationStatus.FAILED, maxAttempts);
+      final List<Notification> retryable = new ArrayList<>(notificationRepository.findByStatusAndRetryCountLessThan(NotificationStatus.FAILED, maxAttempts));
+      retryable.sort(Notification.HIGHEST_PRIORITY_FIRST);
 
       for (final Notification notification : retryable) {
          MDC.put(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY, notification.getId().toString());

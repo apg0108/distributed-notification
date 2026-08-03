@@ -3,6 +3,7 @@ package com.sagant.distributednotification.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -15,12 +16,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 
 import com.sagant.distributednotification.config.property.NotificationRecoveryProperties;
 import com.sagant.distributednotification.domain.entity.Notification;
+import com.sagant.distributednotification.domain.model.NotificationPriority;
 import com.sagant.distributednotification.domain.model.NotificationStatus;
 import com.sagant.distributednotification.repository.NotificationRepository;
 
@@ -71,11 +74,37 @@ class StuckNotificationRecoverySchedulerTest {
     }
 
     @Test
+    void recoverStuckNotifications_reDispatchesHighestPriorityFirst() {
+        final Notification low = stuckNotification(NotificationPriority.LOW, Instant.now().minusSeconds(900));
+        final Notification high = stuckNotification(NotificationPriority.HIGH, Instant.now().minusSeconds(300));
+        final Notification medium = stuckNotification(NotificationPriority.MEDIUM, Instant.now().minusSeconds(600));
+
+        when(notificationRepository.findByStatusAndCreatedAtBefore(eq(NotificationStatus.PENDING), any(Instant.class)))
+                .thenReturn(List.of(low, high, medium));
+
+        scheduler.recoverStuckNotifications();
+
+        final InOrder inOrder = inOrder(notificationProcessingListener);
+        inOrder.verify(notificationProcessingListener).attemptDispatch(high);
+        inOrder.verify(notificationProcessingListener).attemptDispatch(medium);
+        inOrder.verify(notificationProcessingListener).attemptDispatch(low);
+    }
+
+    @Test
     void recoverStuckNotifications_whenNoneStuck_doesNothing() {
         when(notificationRepository.findByStatusAndCreatedAtBefore(eq(NotificationStatus.PENDING), any(Instant.class))).thenReturn(List.of());
 
         scheduler.recoverStuckNotifications();
 
         verifyNoInteractions(notificationProcessingListener);
+    }
+
+    private Notification stuckNotification(final NotificationPriority priority, final Instant createdAt) {
+        final Notification notification = new Notification();
+        notification.setId(UUID.randomUUID());
+        notification.setStatus(NotificationStatus.PENDING);
+        notification.setPriority(priority);
+        notification.setCreatedAt(createdAt);
+        return notification;
     }
 }

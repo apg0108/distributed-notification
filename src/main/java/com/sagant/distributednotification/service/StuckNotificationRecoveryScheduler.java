@@ -1,6 +1,7 @@
 package com.sagant.distributednotification.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.slf4j.MDC;
@@ -29,7 +30,8 @@ public class StuckNotificationRecoveryScheduler {
    @Scheduled(fixedRateString = "${notification.recovery.fixed-rate-ms:60000}")
    public void recoverStuckNotifications() {
       final Instant cutoff = Instant.now().minusMillis(notificationRecoveryProperties.timeoutMs());
-      final List<Notification> stuck = notificationRepository.findByStatusAndCreatedAtBefore(NotificationStatus.PENDING, cutoff);
+      final List<Notification> stuck = new ArrayList<>(notificationRepository.findByStatusAndCreatedAtBefore(NotificationStatus.PENDING, cutoff));
+      stuck.sort(Notification.HIGHEST_PRIORITY_FIRST);
 
       for (final Notification notification : stuck) {
          MDC.put(NotificationProcessingListener.NOTIFICATION_ID_MDC_KEY, notification.getId().toString());

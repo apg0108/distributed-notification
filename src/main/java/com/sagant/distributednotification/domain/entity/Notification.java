@@ -1,6 +1,7 @@
 package com.sagant.distributednotification.domain.entity;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,6 +33,10 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Notification {
+
+   public static final Comparator<Notification> HIGHEST_PRIORITY_FIRST = Comparator
+         .comparing(Notification::getPriority, NotificationPriority.HIGHEST_FIRST)
+         .thenComparing(Notification::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()));
 
    @Id
    @GeneratedValue(strategy = GenerationType.UUID)

@@ -10,7 +10,7 @@ Desde la raíz del repo:
 docker compose up --build
 ```
 
-Esto construye la imagen de la app (build multistage con Maven + JDK 17, runtime en JRE 17 Alpine) y levanta tres servicios:
+Esto construye la imagen de la app (build multistage con Maven + JDK 17, runtime en JRE 17) y levanta tres servicios:
 
 - **`db`** — PostgreSQL, con un healthcheck (`pg_isready`) que la app espera antes de arrancar.
 - **`mailhog`** — servidor SMTP de prueba que intercepta los correos del canal `EMAIL`. Su UI web queda en `http://localhost:8025` para ver los emails
@@ -77,8 +77,9 @@ un cliente externo, las credenciales son `notifications` / `notifications` contr
 ## Decisiones de diseño
 
 **Procesamiento asíncrono sin broker.** La creación de una notificación (`POST /notifications`) persiste la fila con `status=PENDING` de forma
-síncrona y responde inmediatamente — esa fila en Postgres es la cola. El despacho real ocurre después, publicando un `NotificationCreatedEvent`
-que un `@TransactionalEventListener(phase = AFTER_COMMIT)` consume en un `ThreadPoolTaskExecutor`. Se descartó RabbitMQ/Kafka: un broker da
+síncrona y responde inmediatamente — esa fila en Postgres es la cola. El despacho real ocurre después, publicando el `UUID` de la notificación como
+evento de aplicación, que un `@TransactionalEventListener(phase = AFTER_COMMIT)` consume en un `ThreadPoolTaskExecutor` y usa para releer la entidad
+completa desde el repositorio antes de despachar. Se descartó RabbitMQ/Kafka: un broker da
 durabilidad y escalado entre procesos que esta prueba no exige a esta escala, y agrega complejidad (contenedor propio, DLQs, consumer groups)
 para una ventana de 7 días. Como el evento que dispara el despacho vive solo en memoria, una caída del proceso entre el `save()` y que el listener
 llegue a correr dejaría la notificación en `PENDING` para siempre — por eso existe `StuckNotificationRecoveryScheduler`: corre cada
@@ -103,6 +104,10 @@ notificaciones `FAILED` con
 esto sobre `@Retryable`/`@Recover` porque separa con claridad "el intento inicial" (parte del flujo de creación, corre en el executor async) de "la
 recuperación" (un proceso independiente y observable en el tiempo, con su propio intervalo configurable), sin necesitar que Spring AOP proxyee el
 método de envío. El costo: se pierde el backoff exponencial y las políticas de reintento más ricas que Spring Retry da.
+
+**Reprocesamiento ordenado por prioridad.** Tanto `FailedNotificationRetryScheduler` como `StuckNotificationRecoveryScheduler` despachan el lote que
+traen de la base ordenado por `NotificationPriority` de mayor a menor (`HIGH` → `MEDIUM` → `LOW`) y, a igual prioridad, por antigüedad (`created_at`
+ascendente, FIFO). El enum ahora declara un `weight` numérico explícito (`HIGH(3)`, `MEDIUM(2)`, `LOW(1)`).
 
 **Flyway en vez de `ddl-auto=update`.** Migraciones versionadas y revisables (`V1__create_notifications_table.sql`), y deja un schema determinístico.
 

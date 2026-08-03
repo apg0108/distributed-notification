@@ -20,8 +20,6 @@ import org.slf4j.MDC;
 
 import com.sagant.distributednotification.domain.entity.Notification;
 import com.sagant.distributednotification.domain.model.NotificationChannel;
-import com.sagant.distributednotification.domain.model.NotificationCreatedEvent;
-import com.sagant.distributednotification.domain.model.NotificationPriority;
 import com.sagant.distributednotification.domain.model.NotificationStatus;
 import com.sagant.distributednotification.repository.NotificationRepository;
 import com.sagant.distributednotification.service.sender.NotificationSender;
@@ -63,8 +61,7 @@ class NotificationProcessingListenerTest {
         when(notificationRepository.findById(id)).thenReturn(Optional.of(notification));
         when(notificationSenderResolver.resolve(NotificationChannel.LOG)).thenReturn(notificationSender);
 
-        listener.onNotificationCreated(
-                new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.LOG, "subject", "body", NotificationPriority.MEDIUM));
+        listener.onNotificationCreated(id);
 
         verify(notificationSender).send(notification);
 
@@ -85,8 +82,7 @@ class NotificationProcessingListenerTest {
 
         when(notificationRepository.findById(id)).thenReturn(Optional.of(notification));
 
-        listener.onNotificationCreated(
-                new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.LOG, "subject", "body", NotificationPriority.MEDIUM));
+        listener.onNotificationCreated(id);
 
         verify(notificationRepository, never()).save(any());
     }
@@ -103,8 +99,7 @@ class NotificationProcessingListenerTest {
         when(notificationSenderResolver.resolve(NotificationChannel.EMAIL)).thenReturn(notificationSender);
         doThrow(new RuntimeException("SMTP connection refused")).when(notificationSender).send(notification);
 
-        listener.onNotificationCreated(
-                new NotificationCreatedEvent(id, "user@example.com", NotificationChannel.EMAIL, "subject", "body", NotificationPriority.MEDIUM));
+        listener.onNotificationCreated(id);
 
         final ArgumentCaptor<Notification> savedCaptor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository).save(savedCaptor.capture());
